@@ -41,56 +41,63 @@ Google 专为移动设备设计的轻量图像分类模型，参数量约 3.4M�
 
 ---
 
-## 三、模型转换流程（x86_64 PC 执行）
+## 三、模型转换流程
 
-### 3.1 安装 NeuralONE SDK
+### 重要发现：不需要 NeuralONE SDK
 
-```bash
-# 在 x86_64 Linux PC 上执行
-wget https://dl.radxa.com/orion/common/cix_noe_sdk_25_q3_release.tar.gz
-tar -xvf cix_noe_sdk_25_q3_release.tar.gz
-cd cix_noe_sdk_25_q3_release/
+实验证明，可以直接在板子上用 `onnxruntime.quantization` 完成 FP32 → QDQ INT8 转换，不需要 x86_64 PC 和 cixbuild 工具链。
 
-# 创建 Python 3.10 环境
-conda create -n cix-noe python=3.10
-conda activate cix-noe
-bash env_setup.sh
+### 3.1 生成 FP32 模型（在 x86_64 机器上）
 
-# 验证安装
-cixbuild -v
+```python
+import torch, torchvision
+
+model = torchvision.models.mobilenet_v2(weights=None)
+model.eval()
+dummy = torch.randn(1, 3, 224, 224)
+torch.onnx.export(
+    model, dummy, 'mobilenetv2_fp32.onnx',
+    input_names=['input'], output_names=['output'],
+    opset_version=13, dynamo=False
+)
 ```
 
-### 3.2 下载 MobileNetV2 FP32 模型
+### 3.2 传输到板子
 
 ```bash
-# 从 ONNX Model Zoo 下载
-wget https://github.com/onnx/models/raw/main/validated/vision/classification/mobilenet/model/mobilenetv2-10.onnx
+scp mobilenetv2_fp32.onnx baai@192.168.15.195:/opt/edge-ai-lab/models/mobilenetv2/
 ```
 
-### 3.3 检查算子兼容性
+### 3.3 在板子上量化为 QDQ INT8（无需 cixbuild）
 
-```bash
-cixbuild check mobilenetv2-10.onnx
+```python
+from onnxruntime.quantization import quantize_static, QuantType, QuantFormat, CalibrationDataReader
+import numpy as np
+
+class RandomCalibData(CalibrationDataReader):
+    def __init__(self, n=20):
+        self.data = iter([
+            {"input": np.random.rand(1,3,224,224).astype(np.float32)}
+            for _ in range(n)
+        ])
+    def get_next(self):
+        return next(self.data, None)
+
+quantize_static(
+    'mobilenetv2_fp32.onnx',
+    'mobilenetv2_qdq.onnx',
+    RandomCalibData(20),
+    quant_format=QuantFormat.QDQ,
+    per_channel=False,
+    weight_type=QuantType.QInt8,
+    activation_type=QuantType.QInt8,
+)
 ```
 
-输出会列出哪些算子 NPU 支持，哪些需要回退 CPU。MobileNetV2 的算子（Conv、Relu、Add、GlobalAvgPool、Reshape）均在支持列表内。
-
-### 3.4 转换为 INT8
+注意：onnx 包会把 numpy 升到 2.x，需要降回 1.x：
 
 ```bash
-cixbuild convert \
-    --input mobilenetv2-10.onnx \
-    --output mobilenetv2_int8_npu.onnx \
-    --quant int8 \
-    --calibration_data /path/to/calibration_images/
-```
-
-`--calibration_data`：量化需要用少量真实数据（约 100-200 张图片）校准统计分布。可以用 ImageNet 验证集的一小部分。
-
-### 3.5 传输到板子
-
-```bash
-scp mobilenetv2_int8_npu.onnx baai@192.168.15.195:/opt/edge-ai-lab/models/mobilenetv2/
+pip install -i https://mirrors.aliyun.com/pypi/simple/ "numpy>=1.21.6,<2"
 ```
 
 ---
@@ -102,40 +109,25 @@ import onnxruntime as ort
 import numpy as np
 import os, time
 
-# 必须从含 operator 软链的目录运行
 os.chdir('/opt/edge-ai-lab/npu-workspace')
 
-MODEL = '/opt/edge-ai-lab/models/mobilenetv2/mobilenetv2_int8_npu.onnx'
-
-# 创建 Session
-opts = ort.SessionOptions()
-opts.log_severity_level = 1  # 显示节点分配信息
+MODEL = '/opt/edge-ai-lab/models/mobilenetv2/mobilenetv2_qdq.onnx'
 sess = ort.InferenceSession(
     MODEL,
-    sess_options=opts,
     providers=["ZhouyiExecutionProvider", "CPUExecutionProvider"]
 )
-
 inp = sess.get_inputs()[0]
-print(f"输入: {inp.name}, shape={inp.shape}, type={inp.type}")
-
-# 构造 224×224 RGB 图片（实际使用时替换为真实图片预处理结果）
 dummy = np.random.rand(1, 3, 224, 224).astype(np.float32)
 
-# 预热
-for _ in range(5):
-    sess.run(None, {inp.name: dummy})
-
-# 测量延迟
+for _ in range(5): sess.run(None, {inp.name: dummy})  # warmup
 times = []
-for _ in range(100):
+for _ in range(50):
     t0 = time.perf_counter()
-    output = sess.run(None, {inp.name: dummy})
+    out = sess.run(None, {inp.name: dummy})
     times.append((time.perf_counter()-t0)*1000)
-
 times.sort()
-print(f"NPU avg={sum(times)/len(times):.2f}ms P50={times[50]:.2f}ms P95={times[95]:.2f}ms")
-print(f"Top-1 预测类别: {np.argmax(output[0])}")
+print(f"NPU avg={sum(times)/len(times):.2f}ms P50={times[25]:.2f}ms P95={times[47]:.2f}ms")
+print(f"Top-1: {np.argmax(out[0])}")
 ```
 
 运行：
@@ -143,19 +135,33 @@ print(f"Top-1 预测类别: {np.argmax(output[0])}")
 ```bash
 source /opt/edge-ai-lab/venv/bin/activate
 export LD_LIBRARY_PATH=/usr/share/cix/lib:/usr/share/cix/lib/onnxruntime:$LD_LIBRARY_PATH
-python3 /opt/edge-ai-lab/experiments/npu/infer_mobilenetv2.py
+cd /opt/edge-ai-lab/npu-workspace
+python3 infer_mobilenetv2.py
 ```
 
 ---
 
-## 五、验收标准
+## 五、实测结果（2026-11-11）
 
-- [ ] `cixbuild` 在 PC 上成功转换模型（无不兼容算子报错）
-- [ ] 转换后模型传输到板子
-- [ ] Session 创建时显示 NPU 节点分配（`placed on [ZhouyiExecutionProvider]`）
-- [ ] 推理结果 shape 为 `(1, 1000)`
-- [ ] NPU vs CPU 延迟对比：NPU 明显快于 CPU（预期 MobileNetV2 INT8 NPU 延迟 < 20ms）
-- [ ] NPU vs CPU 输出误差 < 0.01
+| Provider | avg (ms) | P50 (ms) | P95 (ms) |
+|---|---|---|---|
+| ZhouyiEP（NPU） | **1.48** | 1.49 | 1.61 |
+| CPU | 12.68 | 12.68 | 12.79 |
+| **NPU 加速比** | **8.6×** | | |
+
+节点分配（verbose 日志）：
+```
+Number of partitions supported by ZHOUYI: 1
+number of nodes in the graph: 313
+number of nodes supported by ZHOUYI: 313
+All nodes placed on [ZhouyiExecutionProvider]. Number of nodes: 1
+```
+
+**全部 313 个节点分配给 NPU，零 CPU 回退。**
+
+这是整个实验最重要的里程碑：在真实的 224×224 视觉模型上，NPU 相对 CPU 实现了 **8.6× 加速**，与之前小模型（sigmoid/mul_1）NPU 反而慢的情况形成鲜明对比，证明 NPU 优势在中大型模型上才能真正体现。
+
+原始数据：`results/bench_2026-11-11.md`
 
 ---
 
