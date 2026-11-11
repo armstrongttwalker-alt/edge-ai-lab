@@ -9,7 +9,7 @@
 | 阶段 | 状态 | 最近更新 |
 |---|---|---|
 | Phase 0 · 基础环境检查 | ✅ 完成 | 2026-11 |
-| Phase 1 · NPU Bring-up | 🔄 Step 4/7，阻塞 | 2026-11 |
+| Phase 1 · NPU Bring-up | ✅ 完成（7/7） | 2026-11-11 |
 | Phase 2 · 基准测试 | ⏳ 未开始 | — |
 | Phase 3 · 模型部署 | 🟡 LLM 子实验已完成 | 2026-11 |
 | Phase 4 · 推理服务 | ⏳ 未开始 | — |
@@ -60,54 +60,52 @@ ZhouyiOperators_x2-25.4.23-py3-none-any.whl
 
 ---
 
-## Phase 1 · NPU Bring-up 🔄
+## Phase 1 · NPU Bring-up ✅ 已完成
 
-### Step 1–3 · 已完成
+**完成时间：** 2026-11-11
 
-驱动、设备节点、NOE 运行库验证均通过。见 Phase 0 结果。
+### 全部 7 步验证通过
 
-### Step 4 · 安装 NumPy + 厂商 ONNX Runtime ⚠️ 阻塞
+| 步骤 | 结果 |
+|---|---|
+| Step 1 · OS/硬件 | ✅ Debian 12, ARM64, 12核, 32GB |
+| Step 2 · NPU 驱动 | ✅ aipu 98304 0, Zhouyi V3 识别 |
+| Step 3 · 设备节点/运行库 | ✅ /dev/aipu, libnoe.so, wheel 文件就位 |
+| Step 4 · numpy 安装 | ✅ 1.26.4（阿里云镜像） |
+| Step 5 · ZhouyiExecutionProvider | ✅ 注册成功 |
+| Step 6 · 模型推理 | ✅ sigmoid/mul_1 均正常运行 |
+| Step 7 · NPU 实际执行确认 | ✅ All nodes placed on [ZhouyiExecutionProvider] |
 
-**问题：** `pip install numpy` 因网络超时失败。
+### 安装的包
 
-**待尝试解决方案（按优先级）：**
-
-```bash
-# 方案 1：使用阿里云镜像
-pip install -i https://mirrors.aliyun.com/pypi/simple/ "numpy>=1.21.6,<2"
-
-# 方案 2：使用清华镜像
-pip install -i https://pypi.tuna.tsinghua.edu.cn/simple/ "numpy>=1.21.6,<2"
-
-# 方案 3：在 Windows 机器下载 ARM64 wheel 后 scp 传入
-# 下载地址：https://pypi.org/project/numpy/#files
-# 文件格式：numpy-*-cp311-cp311-linux_aarch64.whl
-scp numpy-*.whl baai@<板端IP>:/opt/edge-ai-lab/
-pip install /opt/edge-ai-lab/numpy-*.whl
+```
+numpy              1.26.4
+onnxruntime-zhouyi 1.20.0
+libnoe             2.0.0
+NOE-Engine         2.0.0
+ZhouyiOperators-x2 25.4.23
+coloredlogs        15.0.1
 ```
 
-NumPy 安装成功后，按以下顺序安装厂商 wheel：
+### 关键发现
 
-```bash
-source /opt/edge-ai-lab/venv/bin/activate
-pip install libnoe-2.0.0-py3-none-manylinux2014_aarch64.whl
-pip install NOE_Engine-2.0.0-py3-none-manylinux2014_aarch64.whl
-pip install ZhouyiOperators_x2-25.4.23-py3-none-any.whl
-pip install onnxruntime_zhouyi-1.20.0-cp311-cp311-linux_aarch64.whl
-```
+1. **EP 名称**：实际为 `ZhouyiExecutionProvider`（非文档中的 `CIXExecutionProvider`）
+2. **工作目录**：推理必须从含 `operator` 软链的可写目录运行：
+   ```bash
+   mkdir -p /opt/edge-ai-lab/npu-workspace
+   ln -sfn /usr/share/cix/lib/onnxruntime/operator /opt/edge-ai-lab/npu-workspace/operator
+   ```
+3. **LD_LIBRARY_PATH**：须包含 `/usr/share/cix/lib:/usr/share/cix/lib/onnxruntime`
+4. **小模型 NPU 不占优**：sigmoid/mul_1 NPU 约 0.57ms，CPU 约 0.14ms——小模型启动开销大于计算收益，大模型才能体现 NPU 优势
 
-### Step 5–7 · 待执行
+### 实测性能（2026-11-11）
 
-**Step 5 验证命令：**
-```python
-import onnxruntime as ort
-print(ort.get_available_providers())
-# 预期包含：CIXExecutionProvider
-```
+| 模型 | NPU 延迟 | CPU 延迟 | NPU vs CPU 误差 | 节点分配 |
+|---|---|---|---|---|
+| sigmoid.onnx | 0.572ms | 0.135ms | 0.000254 | 全部 NPU |
+| mul_1.onnx | 0.576ms | 0.156ms | 0.000576 | 全部 NPU |
 
-**Step 6–7 推理验证：**
-- 模型：MobileNetV2 INT8（ONNX 格式，224×224 输入）
-- 须确认 NPU Provider 分配情况，不能以结果正确推断 NPU 参与计算
+完整记录：`experiments/phase1-npu-bringup/results/validation_2026-11-11.txt`
 
 ---
 

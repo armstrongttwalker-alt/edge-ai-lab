@@ -1,0 +1,22 @@
+Step 2 · NPU Driver: PASS (aipu 98304 0)
+Step 3 · Device node: PASS (/dev/aipu crw-rw-rw-)
+Step 4 · numpy: 1.26.4
+Step 5 · onnxruntime-zhouyi: 1.20.0
+Step 5 · ZhouyiExecutionProvider: PASS (registered)
+Step 6 · sigmoid.onnx on ZhouyiEP: PASS (shape=(3,4,5), avg=0.572ms)
+Step 6 · mul_1.onnx on ZhouyiEP: PASS (shape=(3,2), avg=0.576ms)
+Step 7 · Node placement (sigmoid): All nodes placed on [ZhouyiExecutionProvider]. Number of nodes: 1
+Step 7 · Node placement (mul_1): All nodes placed on [ZhouyiExecutionProvider]. Number of nodes: 1
+Step 7 · NPU execution confirmed: "Start execute ZHOUYI graph" in logs
+Step 7 · NPU vs CPU max diff (sigmoid): 0.000254 (within quantization tolerance)
+Step 7 · NPU vs CPU max diff (mul_1): 0.000576 (within quantization tolerance)
+
+Key findings:
+- Execution Provider name is ZhouyiExecutionProvider (not CIXExecutionProvider as in earlier docs)
+- Working directory must be /opt/edge-ai-lab/npu-workspace with operator symlink
+  ln -sfn /usr/share/cix/lib/onnxruntime/operator /opt/edge-ai-lab/npu-workspace/operator
+- LD_LIBRARY_PATH must include /usr/share/cix/lib:/usr/share/cix/lib/onnxruntime
+- Installed packages: numpy 1.26.4, onnxruntime-zhouyi 1.20.0, libnoe 2.0.0,
+  NOE-Engine 2.0.0, ZhouyiOperators-x2 25.4.23, coloredlogs 15.0.1
+
+Date: 2026-11-11

@@ -24,7 +24,7 @@
 | 阶段 | 方向 | 状态 |
 |---|---|---|
 | Phase 0 | 基础环境检查 | ✅ 完成 |
-| Phase 1 | NPU Bring-up | 🔄 进行中（Step 4/7） |
+| Phase 1 | NPU Bring-up | ✅ 完成（7/7） |
 | Phase 2 | CPU / GPU / NPU 基准测试 | ⏳ 未开始 |
 | Phase 3 | AI 模型部署 | 🟡 部分完成（LLM/FlagOS 已跑通） |
 | Phase 4 | AI 推理 API 服务 | ⏳ 未开始 |

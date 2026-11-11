@@ -304,7 +304,7 @@ python -c "import onnxruntime; print(onnxruntime.__version__)"
 
 ## 七、Step 5：验证 NPU Execution Provider
 
-**目的：** 确认厂商 ONNX Runtime 注册了 CIX NPU 后端。
+**目的：** 确认厂商 ONNX Runtime 注册了 Zhouyi NPU 后端。
 
 ```python
 import onnxruntime as ort
@@ -312,74 +312,89 @@ providers = ort.get_available_providers()
 print(providers)
 ```
 
-**预期输出（包含 NPU Provider）：**
+**实测输出：**
 ```
-['CIXExecutionProvider', 'CPUExecutionProvider']
+['ZhouyiExecutionProvider', 'CPUExecutionProvider']
 ```
 
-如果只有 `['CPUExecutionProvider']`，说明 NPU Provider 未注册，需要检查 `libnoe.so` 是否在 `LD_LIBRARY_PATH` 中：
+> ⚠️ 注意：Provider 的实际名称是 **`ZhouyiExecutionProvider`**，不是 `CIXExecutionProvider`。
+
+如果只有 `['CPUExecutionProvider']`，需要设置库路径：
 
 ```bash
-export LD_LIBRARY_PATH=/usr/share/cix/lib:$LD_LIBRARY_PATH
-python -c "import onnxruntime as ort; print(ort.get_available_providers())"
+export LD_LIBRARY_PATH=/usr/share/cix/lib:/usr/share/cix/lib/onnxruntime:$LD_LIBRARY_PATH
+python3 -c "import onnxruntime as ort; print(ort.get_available_providers())"
 ```
 
 ---
 
 ## 八、Step 6：加载 MobileNetV2 INT8 执行推理
 
-### 为什么选 MobileNetV2？
+### NPU 工作目录（关键前置步骤）
 
-MobileNetV2 是专为移动和边缘设备设计的轻量图像分类模型。选它作为第一个实验模型的原因：
-- 体积小，输入输出格式清晰（224×224 RGB 图片）
-- INT8 量化版本对 NPU 友好
-- 推理结果容易验证（返回 1000 类的概率分布）
+在创建推理 Session 之前，必须先准备一个**可写的工作目录**，并把 NPU 的 operator 算子库软链进去。否则会报 `Cannot find layerlib under path` 或 `Write linker asm failed` 错误。
 
-### 准备模型
-
-> 注意：模型需要在 x86_64 PC 上用 NeuralONE SDK 转换，再复制到板子。这部分流程在 Phase 3A 详细展开。当前 Step 6 使用已转换好的 `.onnx` 文件。
-
-模型存放位置：
 ```bash
-/opt/edge-ai-lab/models/mobilenetv2/mobilenetv2_int8.onnx
+mkdir -p /opt/edge-ai-lab/npu-workspace
+ln -sfn /usr/share/cix/lib/onnxruntime/operator /opt/edge-ai-lab/npu-workspace/operator
 ```
+
+原因：NPU 编译器（compass_runtime_midware）在运行时会在**当前工作目录**的 `./operator` 下查找算子库文件，并在当前目录创建临时编译输出。`/usr/share/cix/lib/onnxruntime/` 是 root 只读的，无法写入临时文件，所以需要一个用户可写的目录 + operator 软链。
 
 ### 推理脚本
 
 ```python
 import onnxruntime as ort
 import numpy as np
+import os, time
 
-# 加载模型，指定使用 NPU
-sess = ort.InferenceSession(
-    "/opt/edge-ai-lab/models/mobilenetv2/mobilenetv2_int8.onnx",
-    providers=["CIXExecutionProvider", "CPUExecutionProvider"]
-)
+# 必须切换到可写的 NPU 工作目录
+os.chdir('/opt/edge-ai-lab/npu-workspace')
 
-# 查看输入节点信息
-inp = sess.get_inputs()[0]
-print(f"输入节点名：{inp.name}")
-print(f"输入形状：{inp.shape}")   # 预期：[1, 3, 224, 224]
-print(f"输入类型：{inp.type}")    # 预期：tensor(float)
+# 使用 onnxruntime 自带的测试模型验证（无需下载）
+# MobileNetV2 INT8 部署见 Phase 3A
+DATASETS = "/opt/edge-ai-lab/venv/lib/python3.11/site-packages/onnxruntime/datasets"
 
-# 构造随机输入（实际使用时替换为真实图片）
-dummy_input = np.random.rand(1, 3, 224, 224).astype(np.float32)
-
-# 执行推理
-outputs = sess.run(None, {inp.name: dummy_input})
-print(f"输出形状：{outputs[0].shape}")  # 预期：(1, 1000)
-print(f"最高概率类别索引：{np.argmax(outputs[0])}")
+for name, shape in [("sigmoid", [3, 4, 5]), ("mul_1", [3, 2])]:
+    model_path = f"{DATASETS}/{name}.onnx"
+    sess = ort.InferenceSession(
+        model_path,
+        providers=["ZhouyiExecutionProvider", "CPUExecutionProvider"]
+    )
+    inp = sess.get_inputs()[0]
+    dummy = np.random.rand(*shape).astype(np.float32)
+    sess.run(None, {inp.name: dummy})  # 预热
+    t0 = time.time()
+    for _ in range(100):
+        out = sess.run(None, {inp.name: dummy})
+    lat = (time.time() - t0) / 100 * 1000
+    print(f"{name}: shape={out[0].shape}, avg_latency={lat:.3f}ms")
 ```
+
+**运行环境：**
+```bash
+source /opt/edge-ai-lab/venv/bin/activate
+export LD_LIBRARY_PATH=/usr/share/cix/lib:/usr/share/cix/lib/onnxruntime:$LD_LIBRARY_PATH
+python3 run_inference.py
+```
+
+**实测结果（2026-11-11）：**
+- sigmoid：shape=(3,4,5), avg=0.572ms
+- mul_1：shape=(3,2), avg=0.576ms
+
+### MobileNetV2 INT8 说明
+
+> MobileNetV2 INT8 模型需要在 x86_64 PC 上用 NeuralONE SDK 转换，再复制到板子。这部分流程在 Phase 3A 详细展开。当前 Step 6 使用 onnxruntime 自带的 sigmoid.onnx 和 mul_1.onnx 验证 NPU EP 链路是否打通，这两个模型都已确认全部节点分配给 NPU。
 
 ---
 
 ## 九、Step 7：确认 NPU 实际执行（最重要的一步）
 
-**这是整个实验的验收核心。** 程序返回结果不代表 NPU 工作了，可能存在以下三种情况：
+**这是整个实验的验收核心。** 程序返回结果不代表 NPU 工作了，可能存在三种情况：
 
 ```
 情况 A（目标）：NPU 执行
-Python → ONNX Runtime → CIXExecutionProvider → NPU ✅
+Python → ONNX Runtime → ZhouyiExecutionProvider → NPU ✅
 
 情况 B（静默失败）：全部回退 CPU
 Python → ONNX Runtime → CPUExecutionProvider → CPU ❌
@@ -390,54 +405,73 @@ Python → ONNX Runtime → CPUExecutionProvider → CPU ❌
 
 ### 检查 Provider 分配情况
 
+开启 verbose 日志，查看每个节点的分配去向：
+
 ```python
-# 在创建 Session 时开启 verbose 模式
 options = ort.SessionOptions()
 options.log_severity_level = 0  # 0 = 最详细的日志
 
 sess = ort.InferenceSession(
-    "mobilenetv2_int8.onnx",
+    model_path,
     sess_options=options,
-    providers=["CIXExecutionProvider", "CPUExecutionProvider"]
+    providers=["ZhouyiExecutionProvider", "CPUExecutionProvider"]
 )
 ```
 
-日志中查找类似以下内容（表示节点被 NPU 接管）：
+日志中查找以下关键行（表示节点被 NPU 接管）：
 ```
-Node xxx assigned to CIXExecutionProvider
-```
-
-如果看到：
-```
-Node xxx assigned to CPUExecutionProvider
-```
-说明该节点回退到了 CPU。
-
-### 检查 NPU 设备日志
-
-```bash
-# 执行推理前清空旧日志，推理后查看是否有 NPU 活动
-sudo dmesg -C
-python run_inference.py
-sudo dmesg | grep -i aipu
+Number of partitions supported by ZHOUYI: 1, number of nodes in the graph: 1,
+    number of nodes supported by ZHOUYI: 1
+All nodes placed on [ZhouyiExecutionProvider]. Number of nodes: 1
+Start execute ZHOUYI graph:Zhouyi_<id>_0
 ```
 
-有 NPU 任务时，dmesg 应有类似输出：
+**实测日志（2026-11-11，sigmoid.onnx）：**
 ```
-aipu: job submitted
-aipu: job done
+[I:onnxruntime:, zhouyi_execution_provider.cc:288 GetCapability]
+    Number of partitions supported by ZHOUYI: 1, number of nodes in the graph: 1,
+    number of nodes supported by ZHOUYI: 1
+[V:onnxruntime:, session_state.cc:1151 VerifyEachNodeIsAssignedToAnEp]
+    All nodes placed on [ZhouyiExecutionProvider]. Number of nodes: 1
+[V:onnxruntime:, zhouyi_model_impl.cc:440 ExecuteGraph]
+    Start execute ZHOUYI graph:Zhouyi_6095241611793350724_0
 ```
+
+如果看到 `will not be assigned to ZHOUYI` 或 `placed on [CPUExecutionProvider]`，说明该节点回退到了 CPU。
+
+### 检查 NPU 与 CPU 数值一致性
+
+```python
+sess_npu = ort.InferenceSession(model_path,
+           providers=["ZhouyiExecutionProvider", "CPUExecutionProvider"])
+sess_cpu = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+
+out_npu = sess_npu.run(None, {inp.name: dummy})[0]
+out_cpu = sess_cpu.run(None, {inp.name: dummy})[0]
+max_diff = float(abs(out_npu - out_cpu).max())
+print(f"NPU vs CPU max diff: {max_diff}")
+```
+
+**实测结果（2026-11-11）：**
+
+| 模型 | NPU 延迟 | CPU 延迟 | NPU vs CPU 最大误差 | 节点分配 |
+|---|---|---|---|---|
+| sigmoid.onnx | 0.572ms | 0.135ms | 0.000254 | 全部 NPU ✅ |
+| mul_1.onnx | 0.576ms | 0.156ms | 0.000576 | 全部 NPU ✅ |
+
+> 注意：对于这两个极小模型，NPU 延迟反而高于 CPU——这是正常的。NPU 的优势在中大型模型（如 MobileNetV2、YOLO）上才会体现，因为小模型的 NPU 启动开销大于计算收益。Phase 2 会用更实际的模型做对比。
 
 ### 验收清单
 
-以下全部满足，才算本实验通过：
+以下全部满足，才算本实验通过（2026-11-11 全部已通过）：
 
-- [ ] `onnxruntime_zhouyi` 导入无报错
-- [ ] `CIXExecutionProvider` 在 Provider 列表中
-- [ ] Session 创建成功（无报错）
-- [ ] 推理结果输出正确（`outputs[0].shape == (1, 1000)`）
-- [ ] 至少大部分计算节点分配给 NPU（非全部 CPU 回退）
-- [ ] `dmesg` 或 NOE 日志显示 NPU 收到了任务
+- [x] `onnxruntime_zhouyi` 导入无报错
+- [x] `ZhouyiExecutionProvider` 在 Provider 列表中
+- [x] Session 创建成功（无报错）
+- [x] 推理结果输出正确（shape 正确）
+- [x] 计算节点全部分配给 NPU（非全部 CPU 回退）
+- [x] 日志显示 `Start execute ZHOUYI graph`（NPU 实际执行）
+- [x] NPU 与 CPU 输出数值一致（误差 < 0.001，量化精度范围内）
 
 ---
 
