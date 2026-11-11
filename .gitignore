@@ -1,0 +1,25 @@
+# 原始对话草稿
+chat-response*.md
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# 编辑器
+.vscode/
+.idea/
+
+# 实验产出的大文件（模型、数据集）
+*.gguf
+*.onnx
+*.bin
+*.pt
+*.safetensors
+datasets/
