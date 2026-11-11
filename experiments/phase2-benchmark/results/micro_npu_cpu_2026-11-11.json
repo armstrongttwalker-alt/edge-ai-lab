@@ -1,0 +1,14 @@
+{
+  "date": "2026-11-11",
+  "device": "Radxa Orion O6N (CIX P1)",
+  "cpu": "12-core ARM64 (8x Cortex-A720 @2.6GHz + 4x Cortex-A520 @1.8GHz)",
+  "npu": "Zhouyi V3 (1 Cluster x 3 Core)",
+  "note": "Micro-benchmark on tiny models (3-60 elements). NPU advantage requires larger models. See Phase 2 for real workloads.",
+  "results": {
+    "sigmoid_ZhouyiEP": {"avg_ms": 0.321,  "p50_ms": 0.3127, "p95_ms": 0.3649},
+    "sigmoid_CPU":      {"avg_ms": 0.1403, "p50_ms": 0.1314, "p95_ms": 0.1829},
+    "mul_1_ZhouyiEP":   {"avg_ms": 0.3656, "p50_ms": 0.3153, "p95_ms": 0.3736},
+    "mul_1_CPU":        {"avg_ms": 0.17,   "p50_ms": 0.1558, "p95_ms": 0.2154}
+  },
+  "observation": "For tiny models (<100 elements), NPU overhead dominates: NPU ~0.32-0.37ms vs CPU ~0.14-0.17ms. NPU advantage expected at larger tensor sizes (MobileNetV2, YOLO). Phase 2 will test with real vision models."
+}
