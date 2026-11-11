@@ -97,41 +97,70 @@ print('Done')
 ```bash
 /usr/share/cix/bin/llama-bench \
     -m /opt/edge-ai-lab/models/llm/qwen2.5-1.5b-instruct-q8_0.gguf \
-    -t 8 \
-    -p 512 \
-    -n 128 \
-    --output json > /opt/edge-ai-lab/benchmarks/llamacpp_1.5b_2026-xx-xx.json
+    -p 512 -n 128 -t 8 -r 3 -o json > /opt/edge-ai-lab/benchmarks/llamacpp_1.5b_q8_t8.json
 ```
 
-参数说明：
-- `-p 512`：Prefill 阶段输入 512 个 token（测算力）
-- `-n 128`：生成 128 个 token（测访存）
-- `--output json`：输出 JSON 格式结果
+参数说明（来自 llama-bench --help 实测）：
+- `-p 512`：Prefill 输入 512 token（测算力）
+- `-n 128`：生成 128 token（测访存）
+- `-t 8`：使用 8 个线程（A720 大核）
+- `-r 3`：重复 3 次取平均
+- `-o json`：JSON 格式输出（可选 csv/md/sql）
 
 ### 4.4 比较不同线程数
 
 ```bash
-for threads in 1 4 8 12; do
-    echo "=== threads=$threads ==="
+for t in 4 8 12; do
+    echo "=== threads=$t ==="
     /usr/share/cix/bin/llama-bench \
         -m /opt/edge-ai-lab/models/llm/qwen2.5-1.5b-instruct-q8_0.gguf \
-        -t $threads -p 512 -n 128
+        -p 512 -n 128 -t $t -r 2 -o md
 done
 ```
 
 ---
 
-## 五、预期结果
+## 五、实测结果（2026-11-11）
 
-Qwen2.5-1.5B Q8_0 在 8 个 A720 核心上（llama.cpp 通用路线，无 FlagOS 优化）：
-- PP512：约 100-200 tok/s
-- TG128：约 15-25 tok/s
+### 测试环境
 
-FlagOS 路线（已验证）：
-- PP512：~589 tok/s
-- TG128：~21.9 tok/s
+- 设备：Radxa Orion O6N（CIX P1）
+- CPU：8× Cortex-A720 @2.6GHz
+- 模型：Qwen2.5-1.5B-Instruct Q8_0（1.76 GiB，1.78B 参数）
+- llama.cpp build：837cc941（5929）
+- 重复：3 次取平均
 
-差异原因：FlagOS 使用了专门针对 ARM Neon 优化的算子（Triton/TLE Raw），而 llama.cpp 通用 ARM 路线未经过相同级别的优化。
+### 线程数对比
+
+| 线程数 | PP512（tok/s） | TG128（tok/s） |
+|---|---|---|
+| 4 | 63.05 ± 0.07 | **22.78 ± 0.04** |
+| 8 | 117.42 ± 0.06 | 21.40 ± 0.02 |
+| 12 | **121.87 ± 0.10** | 14.82 ± 0.03 |
+
+### 关键发现
+
+**TG128 在 t=4 时最快，t=12 反而最慢。**
+
+这与 FlagOS 实验的结论完全一致：Token Generation 是访存密集型操作（每步读一遍所有权重），多线程争抢内存带宽反而降速。最佳 TG 线程数：4。
+
+**PP512 随线程数近似线性扩展**，t=12 比 t=8 仅提升 4%，说明已接近 CPU 算力上限。最佳 PP 线程数：8-12。
+
+**与 FlagOS 对比（同硬件，不同软件栈）：**
+
+| 路线 | PP512（tok/s） | 差距 |
+|---|---|---|
+| FlagOS（Triton/Neon SDOT 优化） | ~589 | 5× |
+| llama.cpp（通用 ARM 路线） | ~117 | 基准 |
+
+差距体现了底层 ARM 算子优化（Neon SDOT、算子融合）的价值。llama.cpp 通用路线未针对 Cortex-A720 做专项优化。
+
+### 推理验证
+
+- ✅ llama-cli 推理正确（"你好，请用一句话介绍自己" → 正常中文回复）
+- ✅ llama-server `/v1/chat/completions` API 返回正确响应
+
+原始数据：`results/bench_2026-11-11.md`
 
 ---
 

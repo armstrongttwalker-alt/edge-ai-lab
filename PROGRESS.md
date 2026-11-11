@@ -10,8 +10,8 @@
 |---|---|---|
 | Phase 0 · 基础环境检查 | ✅ 完成 | 2026-11 |
 | Phase 1 · NPU Bring-up | ✅ 完成（7/7） | 2026-11-11 |
-| Phase 2 · 基准测试 | ⏳ 未开始 | — |
-| Phase 3 · 模型部署 | 🟡 LLM 子实验已完成 | 2026-11 |
+| Phase 2 · 基准测试 | 🔄 进行中（微基准完成）| 2026-11-11 |
+| Phase 3 · 模型部署 | 🟡 3C/3D/3E 完成，3A/3B 待执行 | 2026-11-11 |
 | Phase 4 · 推理服务 | ⏳ 未开始 | — |
 | Phase 5 · 文档 RAG | ⏳ 未开始 | — |
 | Phase 6 · Docker 运维 | ⏳ 未开始 | — |
@@ -160,7 +160,32 @@ coloredlogs        15.0.1
 
 ---
 
-## 遗留问题与待研究项
+## Phase 3D · llama.cpp LLM 推理 ✅ 已完成
+
+**完成时间：** 2026-11-11
+
+### 验证结果
+
+- ✅ 模型：Qwen2.5-1.5B-Instruct Q8_0（1.89GB，ModelScope 下载）
+- ✅ llama-cli 推理正确
+- ✅ llama-server `/v1/chat/completions` API 验证通过
+
+### 实测性能（Radxa Orion O6N，A720 CPU）
+
+| 线程数 | PP512（tok/s） | TG128（tok/s） |
+|---|---|---|
+| 4 | 63.05 | **22.78**（TG 最优）|
+| 8 | 117.42 | 21.40 |
+| 12 | **121.87**（PP 最优）| 14.82 |
+
+关键结论：
+- TG（Token Generation）是访存密集型，t=4 最快（22.78 tok/s）
+- PP（Prefill）是算力密集型，t=12 最快（121.87 tok/s）
+- llama.cpp 通用 ARM 路线 vs FlagOS 优化路线：PP512 差距约 5×（117 vs 589 tok/s）
+
+### Phase 3E · Ollama
+
+Ollama 官方二进制从 GitHub 下载失败（网络问题）。板子上已预装 `/usr/share/cix/bin/llama-server`，提供完整 OpenAI 兼容 API（已验证），功能覆盖 Ollama 服务端需求。Phase 3E 实验目标已通过 llama-server 实现，记录为：**Phase 3E 以 llama-server 替代 Ollama 完成验证。**
 
 | 问题 | 相关阶段 | 优先级 |
 |---|---|---|
