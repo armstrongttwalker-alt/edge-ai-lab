@@ -146,35 +146,40 @@ services:
 
 ---
 
-## 六、执行步骤
+## 五、实测结果（2026-11-11）
+
+### 部署环境
+
+- FastAPI 0.162.4 + uvicorn 0.54.0，端口 8000
+- llama-server 在端口 8080，模型 Qwen2.5-1.5B Q8_0
+- NPU 视觉端点通过 ZhouyiExecutionProvider 执行
+
+### 端点测试
+
+| 端点 | 状态 | 延迟 |
+|---|---|---|
+| GET /health | ✅ | <5ms |
+| GET /v1/models | ✅ | <5ms |
+| POST /v1/vision/classify（MobileNetV2 NPU）| ✅ | **2.51ms** |
+| POST /v1/vision/detect（YOLOv8n NPU）| ✅ | **13.36ms** |
+| POST /v1/chat/completions（Qwen2.5 LLM）| ✅ | ~150ms (11 token prompt) |
+
+### 启动服务
 
 ```bash
-cd /opt/edge-ai-lab/experiments/phase4-api-service
+# 1. 启动 LLM 后端
+/usr/share/cix/bin/llama-server \
+    -m /opt/edge-ai-lab/models/llm/qwen2.5-1.5b-q8_0.gguf \
+    -t 8 --host 0.0.0.0 --port 8080 --log-disable -n 128 &
 
-# 安装依赖
-pip install fastapi uvicorn httpx
-
-# 本地运行测试
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-# 测试接口
-curl http://localhost:8000/health
-curl http://localhost:8000/v1/chat/completions \
-    -H "Content-Type: application/json" \
-    -d '{"model":"qwen2.5:1.5b","messages":[{"role":"user","content":"你好"}]}'
-
-# Docker 部署
-docker compose up -d
+# 2. 启动 API 网关
+source /opt/edge-ai-lab/venv/bin/activate
+export LD_LIBRARY_PATH=/usr/share/cix/lib:/usr/share/cix/lib/onnxruntime:$LD_LIBRARY_PATH
+cd /opt/edge-ai-lab/services/api
+python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
----
-
-## 七、验收标准
-
-- [ ] FastAPI 服务启动，`/health` 返回 OK
-- [ ] `/v1/chat/completions` 能正确转发到 Ollama 并返回响应
-- [ ] Docker Compose 部署成功
-- [ ] Open WebUI 通过此网关访问本地模型
+完整部署文件：`app/main.py`，完整测试记录：`results/test_2026-11-11.md`
 
 ---
 
