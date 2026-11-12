@@ -14,7 +14,7 @@
 | Phase 3 · 模型部署 | ✅ 3A/3B/3C/3D/3E 全部完成 | 2026-11-11 |
 | Phase 4 · 推理服务 | ✅ 完成 | 2026-11-11 |
 | Phase 5 · 文档 RAG | ✅ 完成 | 2026-11-11 |
-| Phase 6 · Docker 运维 | 🟡 配置完成，镜像拉取受网络限制 | 2026-11-11 |
+| Phase 6 · Docker 运维 | 🟡 Qdrant/Prometheus/Grafana 已运行，Open WebUI 下载中 | 2026-11-12 |
 
 ---
 
