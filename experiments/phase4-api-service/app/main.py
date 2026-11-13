@@ -2,8 +2,8 @@
 Edge AI Gateway - FastAPI 推理网关
 统一路由 LLM 和视觉模型推理请求
 """
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import httpx
@@ -66,26 +66,41 @@ async def list_models():
     }
 
 @app.post("/v1/chat/completions")
-async def chat_completions(request: ChatRequest):
-    """LLM 对话 - 转发到 llama-server"""
-    async with httpx.AsyncClient(timeout=120) as client:
+async def chat_completions(raw_request: Request):
+    """LLM 对话 - 透传到 llama-server，支持流式(stream)和非流式。
+
+    直接转发 Open WebUI 的原始请求体，不做字段裁剪，
+    避免丢失 stream / tools / 采样参数等字段。
+    """
+    try:
+        body = await raw_request.json()
+    except Exception:
+        raise HTTPException(400, "请求体不是合法 JSON")
+
+    is_stream = bool(body.get("stream", False))
+    url = f"{LLAMA_SERVER_URL}/v1/chat/completions"
+
+    if is_stream:
+        # 流式：用 SSE 透传 llama-server 的分块响应
+        async def event_stream():
+            async with httpx.AsyncClient(timeout=300) as client:
+                async with client.stream("POST", url, json=body) as resp:
+                    async for chunk in resp.aiter_bytes():
+                        yield chunk
         try:
-            payload = {
-                "model": request.model,
-                "messages": [{"role": m.role, "content": m.content} for m in request.messages],
-                "max_tokens": request.max_tokens,
-                "temperature": request.temperature,
-                "stream": request.stream,
-            }
-            resp = await client.post(
-                f"{LLAMA_SERVER_URL}/v1/chat/completions",
-                json=payload
-            )
-            return resp.json()
+            return StreamingResponse(event_stream(), media_type="text/event-stream")
         except httpx.ConnectError:
-            raise HTTPException(503, "llama-server 未启动，请先启动 /usr/share/cix/bin/llama-server")
-        except Exception as e:
-            raise HTTPException(500, f"LLM 推理失败: {str(e)}")
+            raise HTTPException(503, "llama-server 未启动，请先在 :8081 启动 llama-server")
+    else:
+        # 非流式：直接返回 JSON
+        async with httpx.AsyncClient(timeout=300) as client:
+            try:
+                resp = await client.post(url, json=body)
+                return JSONResponse(content=resp.json(), status_code=resp.status_code)
+            except httpx.ConnectError:
+                raise HTTPException(503, "llama-server 未启动，请先在 :8081 启动 llama-server")
+            except Exception as e:
+                raise HTTPException(500, f"LLM 推理失败: {str(e)}")
 
 @app.post("/v1/vision/classify")
 async def vision_classify(request: VisionRequest):
