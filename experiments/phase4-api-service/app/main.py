@@ -53,12 +53,15 @@ async def health():
 
 @app.get("/v1/models")
 async def list_models():
-    """列出可用模型"""
+    """列出可用模型（OpenAI 标准格式：data 数组）"""
+    import time as _t
+    created = int(_t.time())
     return {
-        "models": [
-            {"id": "qwen2.5", "object": "model", "owned_by": "llama.cpp"},
-            {"id": "mobilenetv2", "object": "model", "owned_by": "onnxruntime-zhouyi"},
-            {"id": "yolov8n", "object": "model", "owned_by": "onnxruntime-zhouyi"},
+        "object": "list",
+        "data": [
+            {"id": "qwen2.5", "object": "model", "created": created, "owned_by": "llama.cpp"},
+            {"id": "mobilenetv2", "object": "model", "created": created, "owned_by": "onnxruntime-zhouyi"},
+            {"id": "yolov8n", "object": "model", "created": created, "owned_by": "onnxruntime-zhouyi"},
         ]
     }
 
