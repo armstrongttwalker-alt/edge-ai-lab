@@ -1,0 +1,330 @@
+{
+  "rows": [
+    {
+      "id": "A1",
+      "lang": "zh",
+      "retrieval": [
+        5,
+        5
+      ],
+      "generation": [
+        4,
+        5
+      ],
+      "r_miss": [],
+      "g_miss": [
+        "operator"
+      ],
+      "diag": "模型漏:operator",
+      "sec": 65.3,
+      "err": ""
+    },
+    {
+      "id": "A2",
+      "lang": "zh",
+      "retrieval": [
+        7,
+        7
+      ],
+      "generation": [
+        4,
+        7
+      ],
+      "r_miss": [],
+      "g_miss": [
+        "FlagTensor",
+        "FlagAttention",
+        "FlagAudio"
+      ],
+      "diag": "模型漏:FlagTensor,FlagAttention,FlagAudio",
+      "sec": 43.4,
+      "err": ""
+    },
+    {
+      "id": "A3",
+      "lang": "zh",
+      "retrieval": [
+        5,
+        5
+      ],
+      "generation": [
+        4,
+        5
+      ],
+      "r_miss": [],
+      "g_miss": [
+        "developer tool"
+      ],
+      "diag": "模型漏:developer tool",
+      "sec": 55.8,
+      "err": ""
+    },
+    {
+      "id": "B1",
+      "lang": "zh",
+      "retrieval": [
+        6,
+        6
+      ],
+      "generation": [
+        6,
+        6
+      ],
+      "r_miss": [],
+      "g_miss": [],
+      "diag": "OK",
+      "sec": 53.1,
+      "err": ""
+    },
+    {
+      "id": "B2",
+      "lang": "zh",
+      "retrieval": [
+        4,
+        4
+      ],
+      "generation": [
+        4,
+        4
+      ],
+      "r_miss": [],
+      "g_miss": [],
+      "diag": "OK",
+      "sec": 45.1,
+      "err": ""
+    },
+    {
+      "id": "B3",
+      "lang": "zh",
+      "retrieval": [
+        4,
+        4
+      ],
+      "generation": [
+        3,
+        4
+      ],
+      "r_miss": [],
+      "g_miss": [
+        "Online Laborator"
+      ],
+      "diag": "模型漏:Online Laborator",
+      "sec": 48.2,
+      "err": ""
+    },
+    {
+      "id": "B4",
+      "lang": "zh",
+      "retrieval": [
+        2,
+        2
+      ],
+      "generation": [
+        2,
+        2
+      ],
+      "r_miss": [],
+      "g_miss": [],
+      "diag": "OK",
+      "sec": 45.1,
+      "err": ""
+    },
+    {
+      "id": "C1",
+      "lang": "zh",
+      "retrieval": [
+        1,
+        1
+      ],
+      "generation": [
+        3,
+        3
+      ],
+      "r_miss": [],
+      "g_miss": [],
+      "diag": "OK",
+      "sec": 50.0,
+      "err": ""
+    },
+    {
+      "id": "C2",
+      "lang": "zh",
+      "retrieval": [
+        1,
+        1
+      ],
+      "generation": [
+        3,
+        3
+      ],
+      "r_miss": [],
+      "g_miss": [],
+      "diag": "OK",
+      "sec": 53.7,
+      "err": ""
+    },
+    {
+      "id": "C3",
+      "lang": "zh",
+      "retrieval": [
+        1,
+        1
+      ],
+      "generation": [
+        3,
+        3
+      ],
+      "r_miss": [],
+      "g_miss": [],
+      "diag": "OK",
+      "sec": 59.9,
+      "err": ""
+    },
+    {
+      "id": "D1",
+      "lang": "zh",
+      "retrieval": [
+        2,
+        2
+      ],
+      "generation": [
+        3,
+        3
+      ],
+      "r_miss": [],
+      "g_miss": [],
+      "diag": "OK",
+      "sec": 56.3,
+      "err": ""
+    },
+    {
+      "id": "D2",
+      "lang": "zh",
+      "retrieval": [
+        2,
+        2
+      ],
+      "generation": [
+        1,
+        1
+      ],
+      "r_miss": [],
+      "g_miss": [],
+      "diag": "OK",
+      "sec": 44.2,
+      "err": ""
+    },
+    {
+      "id": "E1",
+      "lang": "en",
+      "retrieval": [
+        5,
+        5
+      ],
+      "generation": [
+        3,
+        5
+      ],
+      "r_miss": [],
+      "g_miss": [
+        "FlagGems",
+        "operator"
+      ],
+      "diag": "模型漏:FlagGems,operator",
+      "sec": 60.8,
+      "err": ""
+    },
+    {
+      "id": "E2",
+      "lang": "en",
+      "retrieval": [
+        5,
+        5
+      ],
+      "generation": [
+        3,
+        5
+      ],
+      "r_miss": [],
+      "g_miss": [
+        "FlagGems",
+        "FlagTree"
+      ],
+      "diag": "模型漏:FlagGems,FlagTree",
+      "sec": 95.3,
+      "err": ""
+    }
+  ],
+  "answers": [
+    {
+      "id": "A1",
+      "q": "FlagOS 有哪些核心库(core libraries)?",
+      "answer": "FlagOS的核心库包括以下几项：\n\n- FlagDNN (v0.3.0)\n- FlagBLAS (v0.3.0)\n- FlagFFT (v0.2.0)\n- FlagSparse (v0.3.0)\n- FlagAudio (v0.2.0)\n- FlagTree (GPU: `0.7.0+triton3.6` / `0.7.0+triton3.5` / `0.7.0+triton3.3`; CPU: `v0.1.0`)\n- FlagScale (v2.1.0)\n- FlagCX (v0.14.0)\n- FlagGems (v5.4.0)\n- FlagGems-vllm (v0.2.0)\n- FlagGems-sglang (v0.1.0)"
+    },
+    {
+      "id": "A2",
+      "q": "FlagOS 的多领域算子库(multi-domain operator libraries)包括哪些?",
+      "answer": "FlagOS 的多领域算子库包括以下内容：\n\n- FlagDNN (v0.3.0)\n- FlagBLAS (v0.3.0)\n- FlagFFT (v0.2.0)\n- FlagSparse (v0.3.0)"
+    },
+    {
+      "id": "A3",
+      "q": "FlagOS 2.2 由哪几大部分组成?",
+      "answer": "FlagOS 2.2 的组成包括以下核心库、插件、领域特定项目、开发工具和平台服务：\n\n- **核心库**：Multi-domain operator libraries, FlagDNN (v0.3.0), FlagBLAS (v0.3.0), FlagFFT (v0.2.0), FlagSparse (v0.3.0)\n- **插件**：vllm-plugin-FL (v0.3.0), sglang-plugin-FL (v0.2.0)\n- **领域特定项目**：未具体列出\n- **开发工具**：未具体列出\n- **平台服务**：FlagRelease (v0.1.0), FlagPerf (v1.2.0)"
+    },
+    {
+      "id": "B1",
+      "q": "FlagOS 有哪些插件(plugins)?",
+      "answer": "FlagOS 的插件包括：\n\n- vllm-plugin-FL\n- sglang-plugin-FL (v0.2.0)\n- Torch-FL (v2.10.0)\n- Megatron-LM-FL (v0.3.0)\n- TransformerEngine-FL (v0.3.0)\n- verl-FL (v0.2.0)"
+    },
+    {
+      "id": "B2",
+      "q": "FlagOS 的平台服务(platform services)有哪些?",
+      "answer": "FlagOS 的平台服务包括：\n\n- FlagRelease (v0.1.0)\n- FlagPerf (v1.2.0)\n- FlagCICD (v0.1.0)\n- KernelGenBench (v0.2.0)"
+    },
+    {
+      "id": "B3",
+      "q": "FlagOS 的开发者工具(developer tools)有哪些?",
+      "answer": "FlagOS 的开发者工具包括：\n\n- KernelGen\n- FlagOS-Compressor\n- FlagOS Skills\n- Multi-domain operator libraries\n- FlagDNN\n- FlagBLAS\n- FlagFFT\n- FlagSparse\n- FlagScale\n- FlagPerf\n- FlagCICD\n- KernelGenBench"
+    },
+    {
+      "id": "B4",
+      "q": "FlagOS 的领域专用项目(domain-specific projects)有哪些?",
+      "answer": "FlagOS 的领域专用项目包括：\n\n- **FlagOS-Robo** (v0.1.0)\n- **FlagQuantum** (v0.1.0)"
+    },
+    {
+      "id": "C1",
+      "q": "FlagGems 是什么?",
+      "answer": "FlagGems 是一个高性能的通用操作符库，使用 Triton 编程语言及其扩展语言实现。它旨在为大型模型提供一套通用操作符，加速模型的推理和训练，并支持在多种后端平台上进行。"
+    },
+    {
+      "id": "C2",
+      "q": "FlagCX 的作用是什么?",
+      "answer": "FlagCX 是一个可扩展且适应性强的统一通信库，适用于跨芯片环境。它提供高性能的点对点和集体通信能力，特别针对多芯片、多平台场景进行了优化。通过利用每个平台的原生集体通信能力，FlagCX 结合了设备缓冲 IPC 和 RDMA 等技术，以实现跨芯片和单芯片场景中的高效集体通信，并提供通信优化的自适应调优能力。"
+    },
+    {
+      "id": "C3",
+      "q": "Torch-FL 是干什么的?",
+      "answer": "Torch-FL 是 FlagOS 的 PyTorch 适应性路径，它提供了一个统一的虚拟设备 `FlagOS`，并路由操作到 FlagOS、供应商实现或兼容的后备路径。初始版本专注于：多芯片 PyTorch 执行、混合精度和分布式执行路径、编译器集成、为 Hygon、Moore Threads、BANG 和 Enflame 环境添加后端、以及与 FlagGems 和供应商操作库的集成。"
+    },
+    {
+      "id": "D1",
+      "q": "FlagTree-CPU 支持哪些低比特量化?基于哪个 triton 版本?",
+      "answer": "FlagTree-CPU v0.1.0 支持低比特量化，具体支持的低比特量化包括 SME2, SVE2 和 NEON I8MM 工作负载。它生成针对 W4A8 和 W8A8 工作负载的低比特操作指令。基于 `triton-cpu 3.7.2` 版本。"
+    },
+    {
+      "id": "D2",
+      "q": "FlagRelease 提供多少个模型镜像?",
+      "answer": "FlagRelease 提供超过 300 个模型镜像。"
+    },
+    {
+      "id": "E1",
+      "q": "What are the core libraries of FlagOS?",
+      "answer": "The core libraries of FlagOS include:\n\n- **FlagAudio** (v0.2.0)\n- **FlagDNN** (v0.3.0)\n- **FlagBLAS** (v0.3.0)\n- **FlagFFT** (v0.2.0)\n- **FlagSparse** (v0.3.0)\n- **FlagTree** (GPU: `0.7.0+triton3.6` / `0.7.0+triton3.5` / `0.7.0+triton3.3`; CPU: `v0.1.0`)\n- **FlagCX** (v0.14.0)\n- **FlagScale** (v2.1.0)\n- **FlagTensor** (v0.3.0)\n- **FlagAttention** (v0.4.0)\n- **FlagSparse** (v0.3.0)\n- **FlagScale** (v2.1.0)"
+    },
+    {
+      "id": "E2",
+      "q": "explain FlagOS in details",
+      "answer": "FlagOS is a fully open-source AI system software stack designed for heterogeneous AI chips. It enables AI models to be developed once and seamlessly ported to a wide range of AI hardware with minimal effort. The architecture of FlagOS is composed of several core modules, plugins, and platform services.\n\n### Core Libraries\nFlagOS includes several open-source core libraries that provide essential functionalities for AI operations:\n\n- **Multi-domain operator libraries**: These libraries support a wide range of AI operations across different chips.\n- **FlagDNN** (v0.3.0): A deep neural network computing library oriented towards multiple chip backends, offering high-performance implementations of common deep learning operators.\n- **FlagBLAS** (v0.3.0): A computing library following the BLAS standard interface, defining core operations for numerical calculations.\n- **FlagFFT** (v0.2.0): A JIT-compiled GPU FFT library that generates CUDA kernels at runtime via Triton/TLE and libtriton_jit, supporting arbitrary-length transforms.\n- **FlagSparse** (v0.3.0): A library for sparse operations.\n\n### Domain-Specific Projects\nFlagOS includes several domain-specific projects that cater to specific AI tasks:\n\n- **FlagOS-Robo** (v0.1.0): A chip-agnostic framework for training and deploying Vision Language Models (VLMs) and Vision Language Action (VLA) models across edge-to-cloud scenarios in Embodied Intelligence.\n- **FlagQuantum** (v0.1.0): A high-performance distributed quantum statevector simulator built on PyTorch, enabling quantum circuit simulation across multiple GPUs with automatic sharding and resharding.\n\n### Developer Tools\nFlagOS provides developer tools to streamline workflows:\n\n- **FlagOS Skills** (v1.1.0): Agent-compatible capabilities designed to streamline key FlagOS workflows, including deployment, operator development, migration, adoption, and performance evaluation.\n- **Online Laboratory**: An online laboratory providing cloud-based development environments for FlagOS projects.\n\n### Plugins\nThe FlagOS ecosystem is enabled by a plugin architecture:\n\n- **vllm-plugin-FL**: Extends the inference capabilities of vLLM to diverse AI chips, enabling efficient model serving beyond the original supported hardware.\n- **sglang-plugin-FL**: A plugin for sglang.\n\n### Platform Services\nFlagOS includes several platform services to support large model deployment and evaluation:\n\n- **FlagRelease** (v0.1.0): A platform dedicated to the automatic"
+    }
+  ]
+}
