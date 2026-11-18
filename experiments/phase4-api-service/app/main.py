@@ -223,7 +223,29 @@ async def chat_completions(raw_request: Request):
             # 带上前文才能检索到正确主题。
             user_turns = [m["content"] for m in clean if m["role"] == "user"]
             retrieval_query = " ".join(user_turns[-3:]) if len(user_turns) > 1 else last_q
-            hits = RAG.search(retrieval_query, top_k=15)
+
+            # 空泛/总览型问法（"详细介绍"/"explain in details"/"有哪些"）向量发散，
+            # 常检索不到具体定义块 → 模型只拿到名字、没拿到定义 → 看名字臆造描述
+            # （实测 FlagCX 被编成 "complex number operations"）。
+            # 对这类问法：扩展检索词 + 扩大召回，尽量把各板块的定义块都捞回来。
+            # 注：这是适配当前小语料的启发式；语料上规模后应换 LLM query 改写 /
+            # reranker（纯 CPU 下 LLM 改写会给每次问答再加一次推理，故此处从简）。
+            _ql = last_q.lower()
+            _broad_kw = ["explain", "overview", "detail", "introduce", "tell me about",
+                         "介绍", "详细", "概述", "总览", "整体", "有哪些", "组成",
+                         "architecture", "架构", "components", "核心"]
+            is_broad = len(_ql) < 40 or any(k in _ql for k in _broad_kw)
+            if is_broad:
+                retrieval_query = (
+                    retrieval_query +
+                    " core libraries operators plugins developer tools platform "
+                    "services domain-specific projects architecture components "
+                    "核心库 算子库 插件 开发者工具 平台服务 领域项目 架构 组件"
+                )
+                top_k = 30
+            else:
+                top_k = 15
+            hits = RAG.search(retrieval_query, top_k=top_k)
             if hits:
                 context = "\n\n".join(
                     f"[source:{src}]\n{txt}" for src, txt, _ in hits
@@ -255,7 +277,13 @@ async def chat_completions(raw_request: Request):
                         "itself — list the named entities under it, not the label.\n"
                         "5. CRITICAL: Reply in the SAME language as the user's LAST "
                         "message. English question -> English answer; Chinese question -> "
-                        "Chinese answer.\n\n"
+                        "Chinese answer.\n"
+                        "6. ANTI-HALLUCINATION: Give an item a description ONLY if that "
+                        "description appears in the passages. If a name appears but the "
+                        "passages provide no description for it, list the name ALONE and "
+                        "do NOT invent, guess, or infer a description from the name itself "
+                        "(e.g. never guess that 'FlagCX' means complex numbers or "
+                        "'FlagTree' means tree operations).\n\n"
                         f"=== REFERENCE PASSAGES ===\n{context}\n=== END ===\n\n"
                         f"(The user's last message is: {last_q})"
                     ),
@@ -267,6 +295,12 @@ async def chat_completions(raw_request: Request):
         body["model"] = "qwen2.5"
         body.pop("tools", None)
         body.pop("tool_choice", None)
+        # 强制低温：Open WebUI 默认采样温度偏高（易漂移/臆造），
+        # RAG 场景要忠实于文档，锁到 <=0.2。
+        try:
+            body["temperature"] = min(float(body.get("temperature", 0.2)), 0.2)
+        except (TypeError, ValueError):
+            body["temperature"] = 0.2
 
     is_stream = bool(body.get("stream", False))
     url = f"{LLAMA_SERVER_URL}/v1/chat/completions"

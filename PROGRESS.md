@@ -234,5 +234,30 @@ Ollama 官方二进制从 GitHub 下载失败（网络问题）。板子上已�
 - 生成模型定为 **Qwen2.5-3B-Q8_0**（纯 CPU 下 7B 每题 2–3 分钟，交互代价过大）。
 - `start_llama_server.sh` 已更正为 `qwen2.5-3b-q8.gguf`（此前误写 1.5b-q8，与实际不符）。
 - 网关 `app/main.py` 系统提示词加入：专有名词照抄全名、列表不截断、按标题路径严格分类、
-  严格语言跟随。
+  严格语言跟随；并加入反胡编规则（文档无定义则只列名不臆造）、空泛问法检索扩展 +
+  扩大召回、强制低温（≤0.2，压 Open WebUI 高温漂移）。
 - 评测工具入库，将来换模型/上规模可一键复测对比。
+
+## Phase 5 · NPU 跑嵌入尝试 + 板子能力边界（2026-11-18）
+
+大语料 RAG（1287 篇真实文档，`/home/baai/rag-test/docs/docs`）在纯 CPU 上用 bge-m3
+建索引太慢（1.6s/块、批处理无效、全量约 6h），遂尝试把嵌入放到 Zhouyi NPU。
+
+### 关键实测
+
+| 阶段 | 结果 |
+|---|---|
+| FP32 原图上 NPU | 1236 节点被拒，主因动态形状 `Cannot get shape` |
+| 固定 `[1,512]` 后 | 拒绝归零，仅剩 192 个 FP32 MatMul（NPU 只吃 INT8） |
+| INT8 QDQ（per-tensor） | MatMul 过关，**但 INT8 vs FP32 嵌入余弦仅 0.51，质量崩塌** |
+
+**结论：CIX P1 / Zhouyi 适合 CNN 视觉（边缘机头），不适合大 Transformer 嵌入。**
+per-tensor INT8 PTQ 扛不住 Transformer 激活离群值（CNN 无此问题，故 MobileNetV2 成功）。
+板子定位：NPU 视觉 + 轻量 LLM + 前端网关；大语料嵌入建索引、大模型应放后端服务器/GPU。
+完整数据与复现见 `experiments/phase5-rag/eval/npu-embedding-and-board-limits.md`。
+
+### 大语料 RAG 处置
+
+- 板上维持小语料（FlagOS overview/whats_new）的可用演示；
+- 上千篇真·索引放后端建好，板子只做查询前端；
+- 若板上做嵌入，换小 FP32 模型（bge-small/e5-small）比 INT8 量化 bge-m3 更现实。
