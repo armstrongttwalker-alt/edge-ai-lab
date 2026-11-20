@@ -138,7 +138,7 @@ WHERE source NOT LIKE '%/model_readmes/%'
   让定义块纯净。但**纯净后纯向量检索定义块仍只排第 70 名、分 0.634**，证明"内容纯不纯"
   不是关键。
 
-### 2.4 第四层（真正的根因）：问题与答案"字面不匹配"
+### 2.4 第四层（真正的根因）：高频通用词导致区分度不足
 
 逐块追踪 `what is flagos?` 的全库召回，定义块 **第 70 名、0.634**，而前面是：
 
@@ -150,14 +150,18 @@ WHERE source NOT LIKE '%/model_readmes/%'
 
 对比 `what is flaggems?`：flaggems 定义块 **第 26 名、0.704** → 能答对。
 
-**为什么同样句式，flagos 不行 flaggems 行？**
-1. **"FlagOS" 词太泛**：853 篇每篇都提，一堆 "FlagOS Documentation"/"Core Libraries"
-   块都和 "what is flagos" 沾边抢位；"FlagGems" 相对集中，定义块能冒头。
-2. **query-document mismatch（核心）**：用户问 "what **is** flagos"，定义块内容是
-   "FlagOS **is** a fully open-source AI system software **stack**..."——**问题的词和答案的
-   词字面不像**。向量检索匹配的是字面语义相似度，问句和陈述句天然对不齐。
+**先排除一个错误直觉**：有人会以为病根是"问句 what is 和答案 X is a 字面不像"。
+这站不住——所有"what is X"问题都这样，文档不可能把答案写成"flagos is what"，
+若此是病根则所有定义问题都该挂；且嵌入模型本就是训练来把问句对齐到陈述式答案的，
+`what is flaggems` 能答对就是证明。
 
-**这是纯向量 RAG 的范式级局限，不是文档或嵌入模型的 bug。** 改文档/切块都绕不过去，
+**真正的根因是高频通用词导致区分度不足。** 铁证是对照：同样句式，
+`what is flaggems` 定义块排第 26（答对），`what is flagos` 排第 70（答不对）——
+差别只在词。"FlagGems" 相对集中，只在讲它的少数文档里出现，定义块竞争者少；
+而 "FlagOS" 在 853 篇里篇篇都有，数百个块都"与 FlagOS 相关"，那句真正的定义
+被淹没在大量"仅顺带提及"的块里，相似度上冒不出头。
+
+**这是纯向量 RAG 面对高频通用词的固有局限，不是文档或嵌入模型的 bug。** 改文档/切块都绕不过去，
 因为它们都依赖"问题和内容向量要接近"，而恰恰这个"接近"不成立。
 
 ---
@@ -212,7 +216,7 @@ deepseek-flash 每次先花 ~676 token 思考，改写只给 200 token 全被思
 | 1 | 切块太碎（深层列表被 700 字规则劈成 19 块，核心库占 8 块） | 重组成标题层级（37 块，每实体独立） |
 | 2 | 定义块被 300+ 模型卡/适配指南淹没（排 176 名） | SQL 层过滤噪声目录 |
 | 3 | 定义与组件清单混在一节 | 拆成独立 `## What is FlagOS?` / `## FlagOS components` |
-| 4 | **问题与答案字面不匹配 + flagos 词太泛** | **Query 改写（HyDE）** ← 真正的通用解 |
+| 4 | **高频通用词(flagos 篇篇都有)导致向量区分度不足** | **Query 改写（HyDE）/ 最终用 Hybrid** |
 | 附 | 改写被 deepseek reasoning 吃光 token 返回空 | max_tokens 200→1024 |
 
 **最终检索管线：**
