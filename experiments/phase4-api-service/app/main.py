@@ -144,11 +144,41 @@ class _RagStore:
 
 
 RAG = _RagStore()
+# 本地 bge-m3+Qdrant RAG 启动即重建，CPU 上很慢；默认跳过，只在显式开启时构建。
+# 云端方案(qwen-rag)不需要它。
+if os.getenv("ENABLE_LOCAL_RAG", "0") == "1":
+    try:
+        _n = RAG.build()
+        logger.info(f"RAG(embedding) indexed {_n} chunks into Qdrant collection '{RAG_COLLECTION}'")
+    except Exception as _e:
+        logger.error(f"RAG build failed: {_e}")
+else:
+    logger.info("本地 bge-m3 RAG 已跳过(ENABLE_LOCAL_RAG!=1)，使用云端 qwen-rag")
+
+# ==================== 云端 RAG（OpenRouter 嵌入 + pgvector + DeepSeek 生成）====================
+from app.cloud_rag import CloudRAG
+CLOUD_RAG = CloudRAG()
 try:
-    _n = RAG.build()
-    logger.info(f"RAG(embedding) indexed {_n} chunks into Qdrant collection '{RAG_COLLECTION}'")
+    if CLOUD_RAG.ready:
+        _cn, _cs = CLOUD_RAG.count()
+        logger.info(f"CloudRAG 就绪：pgvector 内 {_cn} 块 / {_cs} 文档")
+    else:
+        logger.warning("CloudRAG 未就绪：.env 缺 EMBED_API_KEY 或 PG_DSN")
 except Exception as _e:
-    logger.error(f"RAG build failed: {_e}")
+    logger.error(f"CloudRAG 连接失败: {_e}")
+
+# 云端 chat（由 .env 配置，OpenAI 兼容）
+_ENV = {}
+try:
+    for _line in open("/opt/edge-ai-lab/.env", encoding="utf-8"):
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _v = _line.split("=", 1); _ENV[_k.strip()] = _v.strip()
+except Exception:
+    pass
+CHAT_BASE_URL = _ENV.get("CHAT_BASE_URL", "").rstrip("/")
+CHAT_API_KEY = _ENV.get("CHAT_API_KEY", "")
+CHAT_MODEL = _ENV.get("CHAT_MODEL", "deepseek-flash")
 
 # ==================== Models ====================
 
@@ -185,6 +215,7 @@ async def list_models():
         "data": [
             {"id": "qwen2.5", "object": "model", "created": created, "owned_by": "llama.cpp"},
             {"id": "qwen2.5-rag", "object": "model", "created": created, "owned_by": "edge-ai-lab"},
+            {"id": "qwen-rag", "object": "model", "created": created, "owned_by": "cloud-rag(pgvector+deepseek)"},
             {"id": "mobilenetv2", "object": "model", "created": created, "owned_by": "onnxruntime-zhouyi"},
             {"id": "yolov8n", "object": "model", "created": created, "owned_by": "onnxruntime-zhouyi"},
         ]
@@ -201,6 +232,112 @@ async def chat_completions(raw_request: Request):
         body = await raw_request.json()
     except Exception:
         raise HTTPException(400, "请求体不是合法 JSON")
+
+    # ===== 云端 RAG：qwen-rag（OpenRouter 嵌入 + pgvector 检索 + DeepSeek 生成）=====
+    if body.get("model") == "qwen-rag" and CLOUD_RAG.ready:
+        msgs = body.get("messages", [])
+        # Open WebUI 的"系统自动请求"（生成标题/标签/follow-up）不是用户真实提问，
+        # 不应触发完整 RAG（白跑 OpenRouter、与真实提问抢配额）。识别后直接转发
+        # 给普通 chat 后端处理，不走检索增强。
+        _joined = " ".join(str(m.get("content", "")) for m in msgs)
+        _owui_markers = ("Generate a concise title", "Generate 1-3 broad tags",
+                         "### Task:", "summarizing the chat history",
+                         "Generate a brief 3-5 word title")
+        if any(mk in _joined for mk in _owui_markers):
+            logger.info("[qwen-rag] 识别为 Open WebUI 系统请求(标题/标签)，跳过 RAG，直接转发")
+            body["model"] = "qwen2.5"
+            body.pop("tools", None); body.pop("tool_choice", None)
+            url = f"{LLAMA_SERVER_URL}/v1/chat/completions"
+            async with httpx.AsyncClient(timeout=60) as client:
+                try:
+                    resp = await client.post(url, json=body)
+                    return JSONResponse(content=resp.json(), status_code=resp.status_code)
+                except Exception:
+                    return JSONResponse(content={"choices":[{"message":{"role":"assistant","content":"Chat"}}]})
+        # 诊断：打印 Open WebUI 发来的原始 messages 结构（角色+长度+前80字）
+        try:
+            _dbg = [{"role": m.get("role"),
+                     "len": len(str(m.get("content", ""))),
+                     "head": str(m.get("content", ""))[:80]} for m in msgs]
+            logger.info(f"[qwen-rag] 收到 {len(msgs)} 条消息: {_dbg}")
+        except Exception:
+            pass
+        # 过滤 Open WebUI 注入的 role=tool / 空消息，只留真实对话
+        clean = [{"role": m.get("role"), "content": str(m.get("content", "")).strip()}
+                 for m in msgs
+                 if m.get("role") in ("user", "assistant") and str(m.get("content", "")).strip()]
+        last_user = next((m for m in reversed(clean) if m["role"] == "user"), None)
+        if not last_user:
+            raise HTTPException(400, "无有效用户消息")
+        last_q = last_user["content"]
+        # 检索查询：默认只用最后一条 user 消息，避免历史话题污染检索
+        # （Open WebUI 会带整段历史，多轮时前一主题会把检索带偏）。
+        retrieval_query = last_q
+        logger.info(f"[qwen-rag] 检索查询: {retrieval_query[:120]}")
+        try:
+            hits = CLOUD_RAG.search(retrieval_query, top_k=8)
+        except Exception as e:
+            raise HTTPException(503, f"检索失败(嵌入/pgvector): {str(e)[:120]}")
+        logger.info(f"[qwen-rag] 命中 {len(hits)} 块: " +
+                    ", ".join(f"{s}({cos:.2f})" for s, t, c, cos in hits[:8]))
+        context = "\n\n".join(
+            f"[source:{src}]\n{content}" for src, title, content, cos in hits)
+        sys_msg = {
+            "role": "system",
+            "content": (
+                "You are a knowledge-base QA assistant for the FlagOS documentation. "
+                "Reference passages are provided below, separated by [source]. Each "
+                "passage starts with its heading path (A > B > C).\n"
+                "General rules:\n"
+                "1. Base your answer on the reference passages. Do NOT fabricate facts, "
+                "versions, or descriptions that are not supported by the passages. Only "
+                "if the passages are truly unrelated to the question should you say the "
+                "information is not available.\n"
+                "2. Copy proper names exactly, with the full Flag* prefix.\n"
+                "3. Reply in the SAME language as the user's last message (passages are "
+                "English; if the user asked in Chinese, answer in Chinese).\n"
+                "\n"
+                "How to answer by question type:\n"
+                "- Definition questions ('what is X', 'X 是什么', 'introduce X'): Explain "
+                "what X is using the descriptions in the passages. Synthesize a clear "
+                "1-3 sentence definition even if the details are spread across several "
+                "passages. Do NOT refuse just because there is no single verbatim "
+                "definition sentence — compose one from what the passages say about X.\n"
+                "- List questions ('what are the X', 'which X', 'X 有哪些'): List EVERY "
+                "matching item found in the passages, grouped by category when natural. "
+                "Be exhaustive; do not stop after a few.\n"
+                "- How-to questions ('how to X', '如何 X'): Give the steps or commands "
+                "from the passages, in order.\n"
+                "- For every item you name, add its description ONLY if the passages "
+                "provide one; never invent a meaning from the name alone.\n\n"
+                f"=== REFERENCE PASSAGES ===\n{context}\n=== END ===\n\n"
+                f"(The user's last message is: {last_q})"
+            ),
+        }
+        fwd = {
+            "model": CHAT_MODEL,
+            "messages": [sys_msg] + clean,
+            # DeepSeek deepseek-flash 会先 reasoning 再答，给足 token 否则答案被挤空
+            "max_tokens": int(body.get("max_tokens") or 1500),
+            "temperature": min(float(body.get("temperature", 0.2) or 0.2), 0.3),
+            "stream": bool(body.get("stream", False)),
+        }
+        url = f"{CHAT_BASE_URL}/chat/completions"
+        headers = {"Authorization": f"Bearer {CHAT_API_KEY}"}
+        if fwd["stream"]:
+            async def cloud_stream():
+                async with httpx.AsyncClient(timeout=300) as client:
+                    async with client.stream("POST", url, json=fwd, headers=headers) as resp:
+                        async for chunk in resp.aiter_bytes():
+                            yield chunk
+            return StreamingResponse(cloud_stream(), media_type="text/event-stream")
+        else:
+            async with httpx.AsyncClient(timeout=300) as client:
+                try:
+                    resp = await client.post(url, json=fwd, headers=headers)
+                    return JSONResponse(content=resp.json(), status_code=resp.status_code)
+                except Exception as e:
+                    raise HTTPException(502, f"云端 chat 调用失败: {str(e)[:120]}")
 
     # 如果选的是 qwen2.5-rag：在网关内部做检索增强
     if body.get("model") == "qwen2.5-rag" and RAG.ready:

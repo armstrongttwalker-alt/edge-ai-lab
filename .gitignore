@@ -23,3 +23,14 @@ venv/
 *.pt
 *.safetensors
 datasets/
+
+# 调试临时文件
+*_result.txt
+build_fts*.txt
+evalset_candidates.txt
+explog.txt
+hybrid_test.txt
+recheck_weak.txt
+verify_fts.txt
+overview_original_backup.md
+overview_restructured.md
